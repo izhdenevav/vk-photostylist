@@ -31,7 +31,7 @@ jobs:
           pre-commit run --all-files --show-diff-on-failure
 
   test:
-    name: Build & Run Tests
+    name: Tests
     runs-on: ubuntu-latest
 
     steps:
