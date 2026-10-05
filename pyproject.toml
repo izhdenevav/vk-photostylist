@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Влада Ижденева", email = "shternbergalisa@yandex.ru" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "dvc>=3.67.1",
     "fire>=0.7.1",
@@ -16,10 +16,8 @@ dependencies = [
     "peft>=0.21.0",
     "pillow>=12.3.0",
     "pytorch-lightning>=2.6.6",
-    "requests>=2.34.2",
     "torch>=2.14.0",
     "transformers>=5.17.0",
-    "vk-api>=11.10.1",
 ]
 
 [project.scripts]
@@ -32,4 +30,46 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
 ]
+
+[project.optional-dependencies]
+fa-2 = [
+    "flash-attn; platform_machine=='x86_64'",
+]
+torch-cu130 = [
+    "torch==2.14.0+cu130",
+    "torchvision==0.29.0+cu130",
+]
+cuda-inference = [
+    "onnxruntime-gpu[cuda,cudnn]==1.30.0",
+]
+tensorrt-inference = [
+    "tensorrt==10.9.0.34 ; sys_platform == 'linux'",
+]
+openivno-inference = [
+    "onnxruntime-openvino==1.24.1",
+]
+migraphx-infernece = [
+    "onnxruntime-migraphx==1.27.1 ; sys_platform == 'linux'",
+]
+
+
+[[tool.uv.index]]
+name = "torch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+
+[tool.uv.sources]
+flash-attn = [
+    { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.2/flash_attn-2.8.3+cu130torch2.14-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" },
+    { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.10.0/flash_attn-2.8.3+cu130torch2.14-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'" }
+]
+
+[tool.uv]
+add-bounds = "exact"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # undocumented-public-package
