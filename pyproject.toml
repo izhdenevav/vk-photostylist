@@ -3,10 +3,7 @@ name = "vk-photostylist"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Влада Ижденева", email = "shternbergalisa@yandex.ru" }
-]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "dvc>=3.67.1",
     "fire>=0.7.1",
@@ -15,9 +12,12 @@ dependencies = [
     "opencv-python>=5.0.0.93",
     "peft>=0.21.0",
     "pillow>=12.3.0",
+    "python-dotenv==1.2.3",
     "pytorch-lightning>=2.6.6",
+    "requests==2.28.1",
     "torch>=2.14.0",
     "transformers>=5.17.0",
+    "vk-api==11.10.1",
 ]
 
 [project.scripts]

@@ -1,15 +1,22 @@
+import io
+import logging
 import os
 
-# import requests
+import requests
 import vk_api
 from dotenv import load_dotenv
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll
 from vk_api.upload import VkUpload
+from vk_api.utils import get_random_id
+
+from vk_photostylist.serving.styles import StyleError, apply_style, choose_style
 
 load_dotenv()
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 GROUP_ID = os.getenv("GROUP_ID")
+
+logger = logging.getLogger(__name__)
 
 # event
 # <<class 'vk_api.bot_longpoll.VkBotMessageEvent'>
@@ -28,52 +35,112 @@ GROUP_ID = os.getenv("GROUP_ID")
 # 'peer_id': 677866122, 'random_id': 0}}})>
 
 
-def get_max_size_url_photo(photo_data: dict) -> str:
-    sizes = photo_data.get("sizes", [])
+def choose_max_size_url_photo(data: dict) -> str:
+    sizes = data.get("sizes", [])
+
     if not sizes:
-        return ""
+        return None
+
     max_size = max(sizes, key=lambda s: s.get("width", 0) * s.get("height", 0))
-    return max_size.get("url", "")
+    return max_size.get("url", None)
 
 
-def run_bot(vk_token: str, group_id: str):
-    vk_session = vk_api.VkApi(token=vk_token)
-    longpoll = VkBotLongPoll(vk_session, group_id)
-
-    for event in longpoll.listen():
-        if event.type == VkBotEventType.MESSAGE_NEW:
-            message = event.object.message
-            # text = event.message.text
-            from_id = event.message.from_id
-
-            attachments = message.get("attachments", [])
-
-            photo_urls = []
-            for attachment in attachments:
-                if attachment.get("type") == "photo":
-                    url = get_max_size_url_photo(attachment.get("photo"))
-                    if url:
-                        photo_urls.append(url)
-
-            if photo_urls:
-                response_to_user("Получен", from_id, vk_session, photo_urls[0])
-            else:
-                response_to_user("Пришлите фото", from_id, vk_session, None)
+def extract_photo_urls(message: dict) -> list[str]:
+    photo_urls = []
+    for attachment in message.get("attachments", []):
+        if attachment.get("type") == "photo":
+            url = choose_max_size_url_photo(attachment["photo"])
+            if url:
+                photo_urls.append(url)
+    return photo_urls
 
 
-def response_to_user(
-    message: str, from_id: str, vk_session: vk_api.VkApi, photo_path: str
-):
+def download_photo(url: str) -> bytes:
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    return r.content
+
+
+def process_image(image: bytes, text: str) -> bytes:
+    # чото вроде обработки будет
+    return image
+
+
+def send_reply(
+    vk_session: vk_api.VkApi,
+    user_id: int,
+    text: str,
+    images: list[bytes] | None = None,
+) -> None:
     vk = vk_session.get_api()
 
-    upload = VkUpload(vk_session)
-    photo = upload.photo_messages(photos=photo_path)[0]
-    attachment = f"photo{photo['owner_id']}_{photo['id']}"
+    attachments = []
+    if images:
+        upload = VkUpload(vk_session)
+        for i, data in enumerate(images):
+            buf = io.BytesIO(data)
+            buf.name = f"photo_{i}.jpg"
+            photo = upload.photo_messages(photos=buf)[0]
+            attachments.append(f"photo{photo['owner_id']}_{photo['id']}")
 
-    response = f"{message}"
     vk.messages.send(
-        user_id=from_id, message=response, attachment=attachment, random_id=0
+        user_id=user_id,
+        message=text,
+        attachment=",".join(attachments) if attachments else None,
+        random_id=get_random_id(),
     )
 
 
-run_bot(VK_TOKEN, GROUP_ID)
+def handle_message(vk_session: vk_api.VkApi, message: dict) -> None:
+    user_id = message["from_id"]
+    text = message.get("text", "")
+
+    photo_urls = extract_photo_urls(message)
+    if not photo_urls:
+        send_reply(vk_session, user_id, "Пришлите фото с описанием обработки")
+        return
+
+    try:
+        style = choose_style(text)
+    except StyleError as e:
+        send_reply(vk_session, user_id, str(e))
+        return
+
+    try:
+        results = []
+        for url in photo_urls:
+            image = download_photo(url)
+            results.append(apply_style(image, style))
+    except StyleError as e:
+        send_reply(vk_session, user_id, str(e))
+        return
+
+    send_reply(vk_session, user_id, f"Стиль: {style}", results)
+
+
+def run_bot(vk_token: str, group_id: str) -> None:
+    vk_session = vk_api.VkApi(token=vk_token)
+    longpoll = VkBotLongPoll(vk_session, group_id)
+    logger.info("Бот запущен")
+
+    for event in longpoll.listen():
+        if event.type != VkBotEventType.MESSAGE_NEW:
+            continue
+
+        message = event.object.message
+        try:
+            handle_message(vk_session, message)
+        except Exception:
+            logger.exception("Не удалось обработать сообщение")
+            try:
+                send_reply(
+                    vk_session,
+                    message["from_id"],
+                    "Что-то пошло не так, попробуйте ещё раз",
+                )
+            except Exception:
+                logger.exception("Не удалось отправить сообщение об ошибке")
+
+
+if __name__ == "__main__":
+    run_bot(VK_TOKEN, GROUP_ID)
